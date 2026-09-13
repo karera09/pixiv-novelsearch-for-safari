@@ -70,6 +70,27 @@ https://www.pixiv.net/ajax/search/novels/{word}?word=...&order=date_d&mode=r18&p
   historical / bl / yuri / for_men / for_women / other
 - 1ページあたり件数(24と仮定。`PAGE_SIZE` と総ページ数計算に影響)
 
+### 5-1a. 公開OSSの調査で判明したこと(2026-09-13, PixivBatchDownloader / PixivFE のソースより)
+実環境ではまだ未検証。`tools/probe-search-api.user.js` で確認する。
+
+- エンドポイントは新検索UI(`/search?q=...&type=novel`)になっても `/ajax/search/novels/{word}` のまま
+  (PixivBatchDownloader は 2026-02-10 改版後もこのURLを使用)
+- `s_mode`: ページ側 `text` → API `s_tc`。`tag` → `s_tag_only`、`tag_tc` → `s_tag`、未指定 → `s_tag_full`
+  → 本文検索を `s_tc` とした v0.8 の仮定は正しい
+- `original_only=1`、`work_lang`、`tlt`/`tgt`(文字数)、`wlt`/`wgt`(単語数)、`rlt`/`rgt`(読了時間)、
+  `scd`/`ecd`(投稿日)、`ai_type` はページ側と同名でそのまま API に渡る
+- **`gs` はジャンルではない**。`gs=1` = 「シリーズでまとめて表示」。`csw=1` = 作者でまとめる。
+  v0.8 のフォールバック候補 `gs` は誤り(有効な値をスラッグで渡しているので落ちるか無視される)
+- 1ページあたりは **30件**(24ではない)。`PAGE_SIZE` は表示単位なので実害はないが、総ページ数の初期推定に使うなら 30
+- 検索結果の各作品オブジェクトに **`genre`(数値ID文字列)と `isOriginal`(真偽値)** が含まれる
+  → サーバー側パラメータが分からなくても、クライアント側でジャンル絞り込みが可能(最有力の回避策)
+- ジャンルIDの対応表(PixivFE `genreMap`): 1 恋愛 / 2 異世界ファンタジー / 3 現代ファンタジー / 4 ミステリー / 5 ホラー /
+  6 SF / 7 文学 / 8 ドラマ / 9 歴史・時代 / 10 BL / 11 百合 / 12 キッズ / 13 詩 / 14 エッセイ・ノンフィクション /
+  15 脚本・台本 / 16 評論・レビュー / 17 その他。`0` は未設定。
+  → v0.8 のジャンル一覧(男性向け/女性向け)は誤り。UI の選択肢もこの表に合わせて直す
+- 仮説: `genre=contemporary_fantasy` で「例外エラーです」になるのは、パラメータ名は認識されているが
+  値の形式が違う(API は数値ID `genre=3` を期待している)ため。未知のパラメータ名なら通常は無視されて落ちない
+
 ### 5-2. 動作未検証の項目
 - 人気順(プレミアム)の挙動(未加入時にエラーか丸められるか)
 - `work_lang` が内部APIでも有効か
@@ -98,6 +119,9 @@ https://www.pixiv.net/ajax/search/novels/{word}?word=...&order=date_d&mode=r18&p
 - 上記のため、純粋関数部分をモジュールに切り出す(またはテスト時に IIFE を評価してグローバル公開)リファクタを検討
 
 ### (b) 実環境確認
+- `tools/probe-search-api.user.js` を有効にして「自動プローブ実行」→ 出力をコピーして共有する。
+  ジャンルのパラメータ名×値形式の総当たり、`s_mode`/`gs`/`r` の効果、1ページ件数、作品オブジェクトの `genre` 有無を一度に確認できる。
+  「記録URL表示」で pixiv 本体がジャンル指定時に実際に叩いた API の URL も見られる
 - PC Chrome/Firefox + Tampermonkey/Violentmonkey で同じ `.user.js` を読み込んで動作確認
   (`@match https://www.pixiv.net/*` はPC版にも当たる。ただしUIはモバイル向けの全画面パネル)
 - Network タブで実URLを取得し、5-1 を解消する
