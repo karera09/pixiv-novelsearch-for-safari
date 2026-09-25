@@ -16,6 +16,9 @@ const paths = {
   report: path.join(PW_DIR, 'report'),
 };
 
-process.env.PLAYWRIGHT_BROWSERS_PATH = paths.browsers;
+// 既定はプロジェクト内。Docker/devcontainer(Playwright 公式イメージは /ms-playwright にブラウザ同梱)や
+// クラウド環境で外から指定されていればそれを尊重する
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) process.env.PLAYWRIGHT_BROWSERS_PATH = paths.browsers;
+paths.browsers = process.env.PLAYWRIGHT_BROWSERS_PATH;
 
 module.exports = paths;

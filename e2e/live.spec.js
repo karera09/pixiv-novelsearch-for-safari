@@ -3,9 +3,10 @@
 // リクエスト数は最小限にし、走査は数ページで中断する。WAIT_MS / MAX_PAGES は本体の値のまま(sleep だけ短縮)。
 const fs = require('node:fs');
 const paths = require('./paths');
-const { test, expect } = require('./fixtures');
+const { test, expect, OFFLINE } = require('./fixtures');
 
 test.use({ mockApi: false });
+test.skip(OFFLINE, 'E2E_OFFLINE=1 では実 pixiv に接続しないのでスキップ');
 test.skip(!fs.existsSync(paths.authState), 'ログイン状態(.playwright/auth/pixiv.json)が無いのでスキップ。npm run e2e:login で作成する');
 
 test('@live ログイン状態が有効', async ({ page, px }) => {

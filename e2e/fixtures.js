@@ -2,10 +2,15 @@
 // 共通フィクスチャ: 本番スクリプト(無改変)をページ読み込み時に注入し、Shadow DOM 内の要素を扱うヘルパーを提供する。
 // Userscripts 拡張の @run-at document-idle に近づけるため、addInitScript で DOMContentLoaded 後に IIFE を評価する。
 const fs = require('node:fs');
+const path = require('node:path');
 const { test: base, expect } = require('@playwright/test');
 const paths = require('./paths');
 
 const SOURCE = fs.readFileSync(paths.userscript, 'utf8');
+// E2E_OFFLINE=1: pixiv に到達できない環境(クラウドのサンドボックス等)向け。
+// www.pixiv.net への全リクエストを止め、トップページは e2e/stub/pixiv.html(干渉を再現したスタブ)で代替する
+const OFFLINE = /^(1|true)$/i.test(process.env.E2E_OFFLINE || '');
+const STUB_HTML = fs.readFileSync(path.join(__dirname, 'stub', 'pixiv.html'), 'utf8');
 // 本番と同じ IIFE を評価しつつ、テストから内部関数を触れるように __pxAndTestHook を仕込む(ブラウザ実行時は未定義で無害)
 const INIT = [
   'window.__pxAndTestHook = h => { window.__px = h; };',
@@ -39,6 +44,16 @@ const test = base.extend({
     // テストから書き換え可能。hold: { p, promise } を入れると、そのページ番号の応答を promise 解決まで保留する(中断テスト用)
     const mock = { total: 90, hold: null };
     const apiCalls = [];
+    if (OFFLINE) {
+      // 先に登録したものほど後に評価される(Playwright は新しい route を優先)ので、包括ルートは API モックより先に登録する
+      await page.route(/^https:\/\/(www\.)?pixiv\.net\//, route => {
+        const u = new URL(route.request().url());
+        if (u.pathname === '/' ) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: STUB_HTML });
+        return route.fulfill({ status: 204, body: '' });
+      });
+      // ページ内から参照される他ドメイン(s.pximg.net 等)も外へ出さない
+      await page.route(/^https?:\/\/(?!www\.pixiv\.net\/)/, route => route.fulfill({ status: 204, body: '' }));
+    }
     await page.route('**/ajax/search/novels/**', async route => {
       const u = new URL(route.request().url());
       apiCalls.push(u);
@@ -69,8 +84,8 @@ const test = base.extend({
 
     const $ = id => host.locator('#' + id); // Playwright の locator は open な Shadow DOM を透過する
     const state = () => page.evaluate(() => { const s = window.__px.getState(); return s && { ...s, seen: s.seen.size }; });
-    await use({ host, $, apiCalls, mock, state });
+    await use({ host, $, apiCalls, mock, state, offline: OFFLINE });
   },
 });
 
-module.exports = { test, expect, mockNovel, mockPage };
+module.exports = { test, expect, mockNovel, mockPage, OFFLINE };

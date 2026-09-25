@@ -1,0 +1,6 @@
+# リポジトリ内は LF に統一する(Windows/Linux/クラウドのどこで checkout しても差分が出ないように)。
+# 作業コピーの改行は各環境の core.autocrlf に従う。Node/Playwright/Userscripts は CRLF/LF どちらでも動く
+* text=auto
+*.png binary
+*.jpg binary
+*.zip binary

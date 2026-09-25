@@ -1,0 +1,13 @@
+{
+  "name": "pixiv-novelsearch-for-safari (Playwright WebKit)",
+  "image": "mcr.microsoft.com/playwright:v1.63.0-noble",
+  "remoteEnv": {
+    "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright"
+  },
+  "postCreateCommand": "npm ci --no-audit --no-fund",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-playwright.playwright"]
+    }
+  }
+}

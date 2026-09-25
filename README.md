@@ -45,6 +45,22 @@ npm run e2e:report   # 直近の HTML レポートを開く
 ```
 
 `.playwright/auth/pixiv.json` にはセッション Cookie が含まれます。git 管理外ですが、共有・コピーしないでください。
+
+### Linux / クラウドでの開発
+
+開発環境は Windows / Linux / クラウド(Claude Code のクラウド実行、GitHub Actions、devcontainer)のどれでも同じコマンドで動きます。
+リポジトリ内の改行は `.gitattributes` で LF に統一しています。
+
+```sh
+npm run e2e:deps     # Linux のみ: WebKit の実行に必要な OS パッケージ(apt、root/sudo 必要)。Playwright 公式イメージでは不要
+npm run e2e:offline  # pixiv に接続できない環境向け。干渉を再現したスタブページ(e2e/stub/pixiv.html)で同じテストを回す
+npm run e2e:docker   # Docker で Linux 上の E2E を回す(Playwright 公式イメージ。ブラウザ同梱)
+```
+
+- `PLAYWRIGHT_BROWSERS_PATH` が外から設定されていればそれを使います(Playwright 公式イメージの `/ms-playwright` 等)。未設定ならプロジェクト内 `.playwright/browsers/`
+- `E2E_OFFLINE=1` で www.pixiv.net への接続を一切行いません。`@live` テストもスキップされます
+- `.devcontainer/devcontainer.json` は Playwright 公式イメージを使うので、Codespaces や VS Code の devcontainer では `npm run e2e` がそのまま動きます
+- 実 pixiv へのログイン(`npm run e2e:login`)は画面が必要なので手元のマシンで行ってください。クラウドでは `e2e:offline` かモック API の `e2e` を使います
 Playwright の WebKit は iOS Safari そのものではないため、Userscripts 拡張の挙動や iOS 固有の UI(下部ツールバー等)は実機で確認してください。
 
 ### 調査用スクリプト

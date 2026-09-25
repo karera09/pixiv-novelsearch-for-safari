@@ -22,3 +22,5 @@
   フォルダ外に書く変更(グローバルインストール、既定のブラウザ保存先など)はしない
 - `npm run e2e` は検索 API をモックする。実 pixiv を叩くテストは `@live` タグを付け、`npm run e2e:live` でのみ走らせる
 - ログイン状態の取得(`npm run e2e:login`)はユーザーが自分で行う。Claude は Cookie/トークンを扱わない
+- Linux / クラウドでも同じコマンドで動くこと(Windows 固有のパス・シェル構文を書かない。環境変数は Node 側で吸収する)。
+  pixiv に到達できない環境では `npm run e2e:offline` を使う
