@@ -64,24 +64,26 @@ npm run e2e:docker   # Docker で Linux 上の E2E を回す(Playwright 公式�
 
 ### Claude Code のクラウド実行で開発する場合
 
-claude.ai/code の環境(Environment)設定に以下を入れると、セッション開始時から `npm run e2e` が使える状態になります。
+claude.ai/code の環境(Environment)設定に以下を入れます。セットアップスクリプトは**リポジトリが checkout される前**に
+(作業ディレクトリも不定で)root で一度だけ実行されるため、リポジトリ内のファイルを直接参照できません。
+そのため、OS パッケージと WebKit 本体の取得だけを自己完結型スクリプトで行い、`npm ci` などリポジトリ依存の処理は
+`.claude/settings.json` の SessionStart フック(`scripts/session-start.sh`)が毎セッション行う構成にしています。
 
 | 設定 | 値 |
 |---|---|
-| Setup script | `bash scripts/cloud-setup.sh`(環境作成時に root で一度だけ実行、5分制限) |
-| Environment variables | `E2E_OFFLINE=1`(pixiv をネットワーク許可に入れない場合)、`CI=1`(Playwright を非対話にする) |
-| Network access | Trusted の既定に加えて `cdn.playwright.dev`、`playwright.download.prss.microsoft.com`(WebKit 取得)。online モードで検証するなら `www.pixiv.net`、`s.pximg.net` も |
-| 認証情報 | 不要。GitHub は Claude の GitHub App 経由で push / PR 作成できるので PAT は要りません。pixiv の API キーは存在しません |
+| Setup script | `curl -fsSL https://raw.githubusercontent.com/karera09/pixiv-novelsearch-for-safari/main/scripts/cloud-setup.sh | bash`(1行) |
+| Environment variables | `CI=1` と `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`。pixiv をネットワーク許可に入れない場合は `E2E_OFFLINE=1` も |
+| Network access | Custom。Trusted の既定(npm / GitHub / raw.githubusercontent.com / Ubuntu apt)に加えて `cdn.playwright.dev`、`playwright.download.prss.microsoft.com`。online モードで検証するなら `www.pixiv.net`、`s.pximg.net` も |
+| API 認証情報 | 不要。GitHub は Claude の GitHub App 経由で push / PR 作成できます。pixiv に API キーはありません |
 
-- `.claude/settings.json` の SessionStart フック(`scripts/session-start.sh`)は、クラウド(`CLAUDE_CODE_REMOTE=true`)のときだけ不足を検知して案内を出します。手元では何もしません
+- `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` は、セットアップスクリプトが WebKit を置く場所と `e2e/paths.js` を一致させるためのものです。
+  スナップショットに含まれるので、2回目以降のセッションはダウンロード無しで `npm run e2e` が使えます
+- `scripts/cloud-setup.sh` の `PW_VERSION` は `package.json` の `@playwright/test` と揃えてください(WebKit のリビジョンが版に紐づきます)
+- セットアップスクリプトを変えたり許可ドメインを変えると、次の新規セッションでスクリプトが再実行されてスナップショットが作り直されます
+- WebKit が無いセッションでは SessionStart フックがバックグラウンドで取得を始めます(`.playwright/install.log`)。完了まで `npm run e2e` は失敗します
 - `.devcontainer/` はクラウド実行では読まれません(Codespaces / VS Code 用)
-- pixiv のログイン状態(`.playwright/auth/pixiv.json`)はクラウドに持ち込まないでください。セッション Cookie はアカウント全体の権限を持ちます。実 pixiv 検証(`e2e:live`)は手元で行い、クラウドは `e2e:offline` / モック API の `e2e` を使う運用を推奨します
-Playwright の WebKit は iOS Safari そのものではないため、Userscripts 拡張の挙動や iOS 固有の UI(下部ツールバー等)は実機で確認してください。
-
-### 調査用スクリプト
-
-`tools/probe-search-api.user.js` は内部 API のパラメータ名を実環境で確認するための別スクリプトです。
-本番スクリプトと同時に有効にでき、左下の「API調査」ボタンから実行します(結果は「コピー」で取り出せます)。
+- pixiv のログイン状態(`.playwright/auth/pixiv.json`)はクラウドに持ち込まないでください。セッション Cookie はアカウント全体の権限を持ちます。
+  実 pixiv 検証(`e2e:live`)は手元で行い、クラウドは `e2e:offline` / モック API の `e2e` を使う運用を推奨します
 
 ### 変更時のルール(抜粋)
 

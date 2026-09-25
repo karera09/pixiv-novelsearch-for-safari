@@ -39,3 +39,20 @@ jobs:
         with:
           name: playwright-report-${{ matrix.mode }}
           path: .playwright/report
+
+  # クラウド環境のセットアップスクリプト(scripts/cloud-setup.sh)を Ubuntu で実際に実行し、
+  # /opt/ms-playwright に取得した WebKit で E2E(offline)が通ることを確認する
+  cloud-setup:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
+      E2E_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo -E env PATH="$PATH" bash scripts/cloud-setup.sh
+      - run: sudo chown -R "$USER" /opt/ms-playwright
+      - run: npm ci
+      - run: npm run e2e
