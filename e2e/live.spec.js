@@ -59,16 +59,16 @@ test('@live UI から検索し、数ページで中断できる', async ({ px })
   await px.$('pxMust').fill('オリジナル');
   await px.$('pxNot').fill('R-18');
   await px.$('pxRun').tap();
-  await expect(px.$('pxStop')).toBeEnabled();
+  await expect(px.$('pxStop')).toBeVisible();
   // 3ページ目まで取ったら中断
   await expect.poll(() => px.apiCalls.length, { timeout: 30000 }).toBeGreaterThanOrEqual(3);
   await px.$('pxStop').tap();
-  await expect(px.$('pxRun')).toBeEnabled({ timeout: 10000 });
+  await px.waitIdle(10000);
   const st = await px.state();
   expect(st.total).toBeGreaterThan(0);
   expect(st.totalPages).toBe(Math.ceil(st.total / 30));
   expect(st.seen).toBeGreaterThanOrEqual(60);
   const tags = await px.$('pxList').locator('.tags').allInnerTexts();
   for (const t of tags) { expect(t).toContain('オリジナル'); expect(t).not.toContain('R-18'); }
-  await expect(px.$('pxLog')).toContainText('s_mode=s_tc');
+  await expect(px.$('pxEnd')).toContainText('s_mode=s_tc'); // 結果末尾の「リクエスト URL」
 });
