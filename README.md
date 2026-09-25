@@ -45,6 +45,37 @@ npm run e2e:report   # 直近の HTML レポートを開く
 ```
 
 `.playwright/auth/pixiv.json` にはセッション Cookie が含まれます。git 管理外ですが、共有・コピーしないでください。
+
+### Linux / クラウドでの開発
+
+開発環境は Windows / Linux / クラウド(Claude Code のクラウド実行、GitHub Actions、devcontainer)のどれでも同じコマンドで動きます。
+リポジトリ内の改行は `.gitattributes` で LF に統一しています。
+
+```sh
+npm run e2e:deps     # Linux のみ: WebKit の実行に必要な OS パッケージ(apt、root/sudo 必要)。Playwright 公式イメージでは不要
+npm run e2e:offline  # pixiv に接続できない環境向け。干渉を再現したスタブページ(e2e/stub/pixiv.html)で同じテストを回す
+npm run e2e:docker   # Docker で Linux 上の E2E を回す(Playwright 公式イメージ。ブラウザ同梱)
+```
+
+- `PLAYWRIGHT_BROWSERS_PATH` が外から設定されていればそれを使います(Playwright 公式イメージの `/ms-playwright` 等)。未設定ならプロジェクト内 `.playwright/browsers/`
+- `E2E_OFFLINE=1` で www.pixiv.net への接続を一切行いません。`@live` テストもスキップされます
+- `.devcontainer/devcontainer.json` は Playwright 公式イメージを使うので、Codespaces や VS Code の devcontainer では `npm run e2e` がそのまま動きます
+- 実 pixiv へのログイン(`npm run e2e:login`)は画面が必要なので手元のマシンで行ってください。クラウドでは `e2e:offline` かモック API の `e2e` を使います
+
+### Claude Code のクラウド実行で開発する場合
+
+claude.ai/code の環境(Environment)設定に以下を入れると、セッション開始時から `npm run e2e` が使える状態になります。
+
+| 設定 | 値 |
+|---|---|
+| Setup script | `bash scripts/cloud-setup.sh`(環境作成時に root で一度だけ実行、5分制限) |
+| Environment variables | `E2E_OFFLINE=1`(pixiv をネットワーク許可に入れない場合)、`CI=1`(Playwright を非対話にする) |
+| Network access | Trusted の既定に加えて `cdn.playwright.dev`、`playwright.download.prss.microsoft.com`(WebKit 取得)。online モードで検証するなら `www.pixiv.net`、`s.pximg.net` も |
+| 認証情報 | 不要。GitHub は Claude の GitHub App 経由で push / PR 作成できるので PAT は要りません。pixiv の API キーは存在しません |
+
+- `.claude/settings.json` の SessionStart フック(`scripts/session-start.sh`)は、クラウド(`CLAUDE_CODE_REMOTE=true`)のときだけ不足を検知して案内を出します。手元では何もしません
+- `.devcontainer/` はクラウド実行では読まれません(Codespaces / VS Code 用)
+- pixiv のログイン状態(`.playwright/auth/pixiv.json`)はクラウドに持ち込まないでください。セッション Cookie はアカウント全体の権限を持ちます。実 pixiv 検証(`e2e:live`)は手元で行い、クラウドは `e2e:offline` / モック API の `e2e` を使う運用を推奨します
 Playwright の WebKit は iOS Safari そのものではないため、Userscripts 拡張の挙動や iOS 固有の UI(下部ツールバー等)は実機で確認してください。
 
 ### 調査用スクリプト

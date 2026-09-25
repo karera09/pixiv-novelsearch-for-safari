@@ -144,6 +144,10 @@ Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エン
 - テスト側では `setSleep` で `WAIT_MS` の待ちだけ短縮している。本体の定数は無改変
 - 限界: Userscripts 拡張そのもの、iOS 固有 UI(下部ツールバーとボタン位置の重なり、アドレスバー縮小時のビューポート)、
   iOS 版 WebKit との細かな差は検証できない。最終確認は実機
+- Linux / クラウド対応(2026-09-25): CI(ubuntu-latest)で online / offline の両モードを実行。`E2E_OFFLINE=1` は pixiv に接続せず
+  `e2e/stub/pixiv.html`(input の文字を透明にする CSS、document レベルのキー横取り、body 直下の定期再描画を再現)で同じ 8件を回す。
+  `PLAYWRIGHT_BROWSERS_PATH` は外部指定を尊重(Playwright 公式イメージ / devcontainer)。`.gitattributes` で LF 統一。
+  実 pixiv ログイン(`e2e:login`)は画面が必要なので手元のみ。クラウドでは offline / モック API で回す
 
 ### (c) 実環境確認(手動)
 - 5-1 は解決済み。再確認が必要になったら 5-3 の手順(内蔵ブラウザ注入)か、`tools/probe-search-api.user.js` を使う。

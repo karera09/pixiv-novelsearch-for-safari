@@ -11,7 +11,10 @@
     "e2e:login": "node e2e/cli.js login",
     "e2e": "node e2e/cli.js test",
     "e2e:live": "node e2e/cli.js live",
-    "e2e:report": "node e2e/cli.js report"
+    "e2e:report": "node e2e/cli.js report",
+    "e2e:deps": "node e2e/cli.js deps",
+    "e2e:offline": "node e2e/offline.js",
+    "e2e:docker": "node e2e/cli.js docker"
   },
   "engines": {
     "node": ">=20"

@@ -15,10 +15,17 @@ jobs:
       - run: npm run check
       - run: npm test
 
-  # WebKit(iPhone 相当)でのタッチ/UI テスト。検索 API はモックだが pixiv のトップページ自体は読み込むので、
-  # pixiv 側が CI の IP を弾く場合はこのジョブだけ失敗する(その場合は手元の `npm run e2e` で確認する)
+  # WebKit(iPhone 相当)でのタッチ/UI テスト(Linux)。
+  #   online:  検索 API はモックだが pixiv のトップページ自体は読み込む。pixiv 側が CI の IP を弾くとこのジョブだけ失敗する
+  #   offline: E2E_OFFLINE=1。pixiv に一切接続せず、干渉を再現したスタブページで検証する(クラウド環境と同じ条件)
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [online, offline]
+    env:
+      E2E_OFFLINE: ${{ matrix.mode == 'offline' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,5 +37,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.mode }}
           path: .playwright/report

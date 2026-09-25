@@ -12,6 +12,18 @@ const config = ['--config', path.join(paths.root, 'playwright.config.js')];
 const commands = {
   // WebKit だけをプロジェクト内(.playwright/browsers)に取得する。Chromium/Firefox は落とさない
   install: () => run([pwCli, 'install', 'webkit', ...rest]),
+  // Linux で WebKit の実行に必要な OS パッケージを入れる(apt。root か sudo が必要。プロジェクト外への変更なので明示的に分けている)
+  deps: () => run([pwCli, 'install-deps', 'webkit', ...rest]),
+  // Docker で Linux 上の E2E を回す(Playwright 公式イメージ。ブラウザは /ms-playwright 同梱、依存導入不要)
+  docker: () => {
+    const image = 'mcr.microsoft.com/playwright:v' + require('@playwright/test/package.json').version + '-noble';
+    const r = spawnSync('docker', [
+      'run', '--rm', '-t', '-v', paths.root + ':/work', '-w', '/work',
+      '-e', 'PLAYWRIGHT_BROWSERS_PATH=/ms-playwright', '-e', 'E2E_OFFLINE=' + (process.env.E2E_OFFLINE || ''),
+      image, 'bash', '-lc', 'npm ci --no-audit --no-fund && npm run e2e -- ' + rest.join(' '),
+    ], { stdio: 'inherit', cwd: paths.root });
+    process.exit(r.status == null ? 1 : r.status);
+  },
   // 実 pixiv へのログイン状態を保存する(ログイン操作はユーザー自身がブラウザ上で行う)
   login: () => run([path.join(__dirname, 'login.js'), ...rest]),
   // モック API でのタッチ/UI テスト。ログイン不要、pixiv へ検索リクエストは飛ばない
