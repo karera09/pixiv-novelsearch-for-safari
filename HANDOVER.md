@@ -1,6 +1,6 @@
 # 引き継ぎ資料: pixiv 小説「本文検索 × タグ AND」ユーザースクリプト
 
-作成日: 2026-09-14 / 最終更新: 2026-09-25 / 現行バージョン: v0.9 (`pixiv-fulltext-tag-and.user.js`)
+作成日: 2026-09-14 / 最終更新: 2026-09-25 / 現行バージョン: v1.0 (`pixiv-fulltext-tag-and.user.js`)
 
 ## 1. 目的
 
@@ -21,7 +21,7 @@ App Store の「Userscripts」アプリ(Safari拡張)で `.user.js` として動
 
 方向は「本文検索を回してタグで絞る」一択。逆(タグ検索→本文照合)は作品ごとに本文取得が必要で不可。
 
-## 3. 実装済み機能 (v0.9)
+## 3. 実装済み機能 (v1.0)
 
 - 本文語 / 必須タグ / 除外タグ(スペース区切り)
 - タグあいまい検索(部分一致・大文字小文字無視)チェックボックス
@@ -29,14 +29,32 @@ App Store の「Userscripts」アプリ(Safari拡張)で `.user.js` として動
 - 検索オプション(サーバー側クエリに乗る): 年齢制限 `mode=all|safe|r18`、オリジナル限定 `original_only=1`、
   ジャンル `genre=<数値ID 1〜17>`(v0.9 で数値IDに修正)、作品言語 `work_lang`、追加パラメータ自由入力
 - 総ページ数表示: 1ページ目の `total` ÷ 1ページあたり件数
-- 中断(AbortController でfetchを切る。pは進めない)と再開
-- ヒットは見つけ次第描画。ステータス欄と操作ボタンは結果リストの下
-- 作品リンクは `target="_blank"`
-- UIは Shadow DOM 内、`documentElement` 直下にマウント。パネル内のキー/入力/タッチ/クリック系イベントは
-  `stopPropagation` でpixiv側(React)へ流さない  ← pixivのCSSと入力横取り対策
-- バージョン表記(`VERSION` 定数、パネル見出しに表示)
-- ステータス欄に実際のリクエストURLを常時表示(パラメータ検証用)
-- エラー時はメッセージ + URL を表示
+- 中断(AbortController でfetchを切る。pは進めない)と再開(「続きを探す」)
+- 1回のタップで掘るページ数の上限 `PAGES_PER_BATCH`(20)。達したら `budget` 状態で一旦止まり「続けて探す」で続きから(v1.0)
+- ヒットは見つけ次第描画。最終ページ取得後の余分な `WAIT_MS` 待機は無くした(終端判定を `p++` 直後に移動)
+- 作品リンクは `target="_blank"`(1件につきリンクは1つ。タグは `<button>`)
+- UIは Shadow DOM 内、`documentElement` 直下にマウント。ShadowRoot でキー/入力/タッチ/クリック/submit/change を
+  `stopPropagation` してpixiv側(React)へ流さない  ← pixivのCSSと入力横取り対策
+- `fetchJson` は JSON 以外の応答(ログイン切れ・403・429 の HTML)を分かる文言のエラーにする(v1.0)
+
+### v1.0 の UI(2026-09-25 全面書き直し)
+- **入口**: 画面右端の細いエッジタブ(`#pxAndBtn`、見た目 18×64px)。既定では小説関連ページ(`isNovelContext`:
+  `/novel/*`(show.php 以外)、`/tags/*/novels`、`/users/*/novels`、`/search?type=novel`)でだけ出す。
+  SPA 遷移は `location.href` の 800ms ポーリング + popstate/hashchange で追従(隔離ワールドでは pushState を横取りできない)。
+  下スクロール中は引っ込む(`.tuck`)。検索中や結果が残っている間は全ページで件数バッジ付きで出す(戻り道)。
+  設定で「小説のページだけ / pixiv の全ページ / 出さない」。`#pxand` ハッシュ、`pxand:open` イベントでどこでも開ける
+- **2画面構成**(`#pxAndPanel[data-view=form|results]`): 固定ヘッダー / スクロール領域 / 固定フッター。
+  条件画面は `<form id="pxForm">`(キーボードの検索キーで送信。`pxRun` は `form=` 属性で外から紐づく)。
+  結果画面は上部に条件要約チップ(タップで条件画面へ)と進捗バー、結果リスト、末尾に状態別の案内と「リクエスト URL(確認用)」(`#pxDebug`、コピーボタン付き)
+- **状態**(`data-state`): idle / running / paused(PAGE_SIZE 揃った) / budget(PAGES_PER_BATCH) / stopped(中断) / done / limit(MAX_PAGES) / error。
+  フッターの主ボタンは状態ごとに1つ: 検索(`pxRun`) / 止める(`pxStop`) / 続きを探す・続けて探す・再試行(`pxMore`) / 条件を変える(`pxEdit`)
+- **フォーム**: 必須/除外タグは2欄のまま、解釈結果をチップ表示。部分一致・オリジナル限定は iOS 風スイッチ(`input.sw`、E2E の tap/toBeChecked はそのまま通る)。
+  ジャンルはオリジナル限定オフの間 `disabled`。詳細条件の件数バッジ。タグページから開くと `#pxPreset` でそのタグを必須に入れる提案
+- **結果カード**: 種類・ジャンル名(`GENRES`)・R-18/AI の印、タイトル(2行省略)、シリーズ、作者・字数(約N分)・♡・投稿日、
+  タグチップ(一致タグを先頭に強調、1行でフェード)。タグをタップ → アクションシートで必須/除外に追加して再検索
+- **保存**: `localStorage` の `pxAnd:v1:last` / `history`(8件) / `prefs`。pixiv と同じオリジンなので設定でオフにできる
+- **テーマ**: `applyTheme()` が pixiv の `body` 背景色の明るさで `host[data-theme]` を決める(pixiv のダークテーマに追従)。取れなければ OS の `prefers-color-scheme`
+- **iOS 対応**: 入力は 16px、`env(safe-area-inset-*)`、`overscroll-behavior:contain`、`visualViewport` でキーボード表示中はフッターを隠す、`touch-action:manipulation`
 
 ## 4. 開発中に踏んだ問題と対処
 
@@ -97,8 +115,10 @@ Claude Code の内蔵ブラウザでユーザーが pixiv にログインした�
 未検証のまま:
 - 人気順(プレミアム)の挙動(未加入時にエラーか丸められるか)
 - iPhone Safari + Userscripts 実機での表示・タッチ操作(Claude Code の環境では PC Chrome 相当の内蔵ブラウザしか使えない)
-- 最終ページ取得後にも `WAIT_MS` の待機が1回余分に入る(終端判定がループ先頭にあるため)。実害は800msの待ちだけ。
-  直すなら `state.p++` の直後に `totalPages` 超過判定を入れる(test/collect.test.js の待機回数テストも更新すること)
+- (解決済み v1.0)最終ページ取得後の余分な `WAIT_MS` 待機は、終端判定を `state.p++` 直後に移して無くした
+- v1.0 の UI を iPhone 実機で未確認: セーフエリア(`env()`)の実値、キーボード表示中のフッター位置(`visualViewport`)、
+  Safari 下部ツールバーとエッジタブの重なり、`input.sw`(appearance:none の checkbox + ::before)の描画、Shadow DOM 内の `:visited`、
+  Userscripts の隔離ワールドでの SPA 遷移検知(ポーリングなので動くはず)
 
 ### 5-3. Claude Code 環境での実環境検証手順(再現用)
 ※ 2026-09-25 以降は `npm run e2e:login` → `npm run e2e:live`(6章 (b))の方が再現性が高い。以下は内蔵ブラウザで手早く確認する場合の手順。
@@ -135,10 +155,13 @@ Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エン
   `e2e/fixtures.js`(本番スクリプトを無改変で `addInitScript` 注入、検索 API のモック、Shadow DOM 用ヘルパー)、
   `e2e/ui.spec.js`(モック API。ログイン不要)、`e2e/live.spec.js`(`@live`。実 pixiv、ログイン状態が無ければスキップ)、
   `e2e/login.js`(ユーザーが WebKit ウィンドウでログインすると `storageState` を保存)
-- `ui.spec.js` でカバー済み: ボタンがビューポート内 / タップでパネル開閉 / 入力保持と文字色(pixiv の CSS・React 干渉) /
-  タグ AND・NOT フィルタと PAGE_SIZE までのページ掘り / ジャンル選択肢が数値ID・リクエストに `genre=<ID>`・フォールバック無し /
-  スラッグ指定時のエラー表示(1リクエストで停止) / 中断→再開(p が進まない・重複なし・再開は新バッチ24件) /
-  パネル内イベントが document へバブリングしない
+- フィクスチャの開始 URL は `/tags/魔法/novels`(`startUrl` オプション。入口のタブは小説ページでしか出ないため)。
+  オフラインのスタブはナビゲーション要求ならどのパスでも返す。走査の完了は `px.waitIdle()`(`data-state` が running 以外になるまで)で待つ
+- `ui.spec.js` でカバー済み(13本): エッジタブがビューポート内・タップで開く・空の本文語では検索不可 / トップでは出ず pushState で出る・`#pxand` で開く /
+  入力保持と文字色・placeholder の色が値と違う / タグ AND・NOT フィルタと PAGE_SIZE までのページ掘り・1件目が見えたまま・一致タグの強調 /
+  ジャンル選択肢が数値ID・オリジナル限定オフでは disabled・リクエストに `genre=<ID>` / スラッグ指定時のエラー表示と「再試行」 /
+  中断→再開(p が進まない・重複なし・「続きを探す」) / PAGES_PER_BATCH で budget 停止→「続けて探す」 / 閉じても検索が続きバッジが出る /
+  Enter で検索・再読み込み後に条件と履歴が戻る / 結果のタグから除外に追加して再検索 / タグページからの必須タグ提案 / パネル内イベントが document へバブリングしない
 - `live.spec.js` でカバー済み: ログイン有効 / `s_tc` で 30件・`genre`・`isOriginal` あり / `genre=3` で絞られ全件 genre "3" /
   スラッグは「例外エラーです」 / UI から検索して数ページで中断
 - テスト側では `setSleep` で `WAIT_MS` の待ちだけ短縮している。本体の定数は無改変
@@ -161,21 +184,35 @@ Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エン
 1. App Store「Userscripts」をインストール → 設定 → Safari → 機能拡張 で有効化
 2. Userscripts アプリで保存先フォルダ(iCloud Drive)を指定
 3. `pixiv-fulltext-tag-and.user.js` をそのフォルダに置く(PCから iCloud 経由でも可)
-4. pixiv を開くと右下に「本文×タグ」ボタン
+4. pixiv の小説関連ページを開くと右端に「本文×タグ」のエッジタブ(トップやイラストのページには出ない。設定で変更可)
 
 ## 8. 今後の要望候補(未着手)
 
 - 文字数範囲指定(`tlt` / `tgt` らしいが未確認。現状は追加パラメータ欄で試せる)
-- 検索条件の保存(Userscripts では `localStorage` が使える)
+- (v1.0 で実装済み)検索条件の保存・履歴
 - 結果の並び替え/ブックマーク数フィルタ(クライアント側で可能)
+- 走査済みの作品(最大 3,000件)をメモリに残し、タグ条件だけの変更は再取得せずその場で絞り直す(UI 検討時の案。通信量を減らせる)
+- sessionStorage で結果とカーソルを復元(完全な再読み込み後も「続きを探す」できるように)
 - ページ内グリッドへの統合(現状は独立パネル。モバイル版UIが別物なので当面は独立のまま推奨)
+
+### v1.0 の UI 設計で検討して見送った案(理由つき)
+- 必須/除外タグを1欄にまとめて `-タグ` 記法で除外する案 → 2欄+チップ表示の方が記法を知らなくても使えるので見送り(既存 id も維持できる)
+- 小説検索の結果ページに来たとき数秒だけ「〜をタグで絞る」チップを画面端から出す案 → pixiv のタブ行を覆うので、パネル内の提案バー(`#pxPreset`)に置き換え
+- 右下の丸いアイコンボタン → 本物の pixiv では作品サムネに重なる。右端の細いエッジタブの方が邪魔にならない
+- pixiv の DOM(検索ヘッダー)にボタンを挿入する案 → React に消されるので不採用
 
 ## 9. コード構成(単一ファイル)
 
 ```
-設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, WAIT_MS, FULLTEXT_MODE, PARAM_ORIGINAL, PARAM_GENRE)
-buildSearchUrl / fetchJson / fetchFulltextPage   … API呼び出し
+設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, PAGES_PER_BATCH, WAIT_MS, FULLTEXT_MODE, PARAM_ORIGINAL, PARAM_GENRE, GENRES)
+buildSearchUrl / fetchJson / fetchFulltextPage  … API呼び出し(fetchJson は非 JSON 応答を分かるエラーに)
 hasTag / matchTags                                … タグ判定
-state / collectBatch                              … 走査ループ(カーソル・中断・重複排除)
-UI: Shadow DOM 構築, イベント隔離, renderOne, setBusy, statusText, run
+state / collectBatch                              … 走査ループ(カーソル・中断・重複排除・budget)
+isNovelContext / pageContext                      … URL 判定(入口の表示、ページからの提案)。純粋関数で単体テスト可
+LS / prefs                                        … localStorage(try/catch 必須)
+UI: Shadow DOM 構築(CSS 変数でライト/ダーク), イベント隔離(ShadowRoot),
+    readForm/writeForm/syncForm, updatePreset, summaryHtml, 履歴,
+    phase()/setView()/updateStatus()(data-view / data-state から表示を導出), renderOne,
+    step()/startSearch()(実行), アクションシート, open()/close()/applyTheme()/updateEntry(), ルーティング監視
 ```
+- ブラウザ API(location / addEventListener / classList 等)は単体テストのスタブに無いので、起動時の処理は `BROWSER` で守る

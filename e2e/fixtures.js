@@ -39,8 +39,10 @@ function mockPage(p, total, perPage = 30) {
 const test = base.extend({
   // true(既定): 検索 API をモックし pixiv へ検索リクエストを飛ばさない(ログイン不要)。false: 実 API に通す(@live 用)
   mockApi: [true, { option: true }],
+  // 最初に開くページ。入口のタブは小説関連ページでしか出ないので、既定はタグ検索の小説タブ(魔法)
+  startUrl: ['https://www.pixiv.net/tags/%E9%AD%94%E6%B3%95/novels', { option: true }],
 
-  px: async ({ page, mockApi }, use) => {
+  px: async ({ page, mockApi, startUrl }, use) => {
     // テストから書き換え可能。hold: { p, promise } を入れると、そのページ番号の応答を promise 解決まで保留する(中断テスト用)
     const mock = { total: 90, hold: null };
     const apiCalls = [];
@@ -48,7 +50,8 @@ const test = base.extend({
       // 先に登録したものほど後に評価される(Playwright は新しい route を優先)ので、包括ルートは API モックより先に登録する
       await page.route(/^https:\/\/(www\.)?pixiv\.net\//, route => {
         const u = new URL(route.request().url());
-        if (u.pathname === '/' ) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: STUB_HTML });
+        // ページ遷移(トップでも小説ページでも)はスタブ HTML を返し、それ以外(画像・API 等)は空応答
+        if (route.request().isNavigationRequest() && !u.pathname.startsWith('/ajax/')) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: STUB_HTML });
         return route.fulfill({ status: 204, body: '' });
       });
       // ページ内から参照される他ドメイン(s.pximg.net 等)も外へ出さない
@@ -72,7 +75,7 @@ const test = base.extend({
     });
 
     await page.addInitScript(INIT);
-    await page.goto('https://www.pixiv.net/', { waitUntil: 'domcontentloaded' });
+    await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
 
     const host = page.locator('#pxAndHost');
     await expect(host).toBeAttached();
@@ -84,7 +87,9 @@ const test = base.extend({
 
     const $ = id => host.locator('#' + id); // Playwright の locator は open な Shadow DOM を透過する
     const state = () => page.evaluate(() => { const s = window.__px.getState(); return s && { ...s, seen: s.seen.size }; });
-    await use({ host, $, apiCalls, mock, state, offline: OFFLINE });
+    // 走査が止まる(running 以外になる)まで待つ。data-state は本体が状態ごとに付ける属性
+    const waitIdle = (timeout = 15000) => expect($('pxAndPanel')).toHaveAttribute('data-state', /^(paused|budget|stopped|done|limit|error)$/, { timeout });
+    await use({ host, $, apiCalls, mock, state, waitIdle, offline: OFFLINE });
   },
 });
 
