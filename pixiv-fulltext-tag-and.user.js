@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         pixiv 小説 本文検索×タグAND
 // @namespace    local
-// @version      0.8
+// @version      0.9
 // @description  本文全文検索の結果を、タグ条件(AND / NOT)でクライアント側フィルタして表示する
 // @match        https://www.pixiv.net/*
 // @run-at       document-idle
@@ -11,23 +11,21 @@
   'use strict';
 
   // ---- 設定 ----
-  const VERSION = '0.8';
-  const PAGE_SIZE = 24;     // 「検索」「もっと読む」1回で揃えたい件数
+  const VERSION = '0.9';
+  const PAGE_SIZE = 24;     // 「検索」「もっと読む」1回で揃えたい件数(表示単位。API は1ページ30件返す)
   const MAX_PAGES = 100;    // 1回の検索で本文検索を何ページまで掘るか(安全弁)
   const WAIT_MS   = 800;    // ページ取得間の待ち時間(連打防止)
-  const FULLTEXT_MODE = 's_tc'; // 本文検索のs_mode。PCのpixivで本文検索したときのNetworkタブで要確認
+  const FULLTEXT_MODE = 's_tc'; // 本文検索のs_mode(2026-09-25 実環境で確認済み)
 
   let sleep = ms => new Promise(r => setTimeout(r, ms)); // テストでは差し替え可能(下の __pxAndTestHook 参照)
 
-  // 本文検索を1ページ取得(同一オリジンなのでログインCookieがそのまま乗る)
-  // 本文検索のクエリ(全文検索と同時に適用できるサーバー側フィルタ)
-  //   mode: all / safe / r18   original_only: 1 で「オリジナル作品限定」   genre: ジャンル(original_only=1 のときのみ)
+  // 本文検索のクエリ(全文検索と同時に適用できるサーバー側フィルタ。2026-09-25 実環境で確認済み)
+  //   mode: all / safe / r18   original_only: 1 で「オリジナル作品限定」
+  //   genre: ジャンルの数値ID(1〜17。original_only=1 のときのみ)。スラッグ(contemporary_fantasy 等)を渡すと
+  //          「例外エラーです」(HTTP 500)になる。ページ側URLのスラッグと内部APIの値形式は別物
   //   work_lang: 作品の言語     extra: Networkタブで見つけた任意のパラメータをそのまま追記
-  // ※パラメータ名はPC版pixivの検索オプション操作時に /ajax/search/novels/ のURLで確認して、違えばここを直す
   const PARAM_ORIGINAL = 'original_only';
-  // ジャンルのパラメータ名は内部APIでの正解が未確定なので、候補を順に試して通ったものを採用する
-  const GENRE_PARAM_CANDIDATES = ['genre', 'gs', 'genres', 'novel_genre'];
-  let PARAM_GENRE = GENRE_PARAM_CANDIDATES[0];
+  const PARAM_GENRE = 'genre';
 
   function buildSearchUrl(o, p) {
     const w = encodeURIComponent(o.text);
@@ -48,17 +46,9 @@
   }
 
   async function fetchFulltextPage(o, p, signal) {
-    let json = await fetchJson(buildSearchUrl(o, p), signal);
-    // ジャンル指定時にAPIが拒否したら、パラメータ名の候補を順に試す
-    if (json.error && o.original && o.genre) {
-      for (const cand of GENRE_PARAM_CANDIDATES) {
-        if (cand === PARAM_GENRE) continue;
-        const prev = PARAM_GENRE; PARAM_GENRE = cand;
-        const j2 = await fetchJson(buildSearchUrl(o, p), signal);
-        if (!j2.error) { json = j2; o.genreParamUsed = cand; break; }
-        PARAM_GENRE = prev;
-      }
-    }
+    const json = await fetchJson(buildSearchUrl(o, p), signal);
+    // ※以前はジャンル指定でエラーになったらパラメータ名の候補を順に試していたが、未知の名前(genres 等)は
+    //   サーバーに無視されて「絞り込みなしで成功」してしまうため廃止した。エラーはそのまま伝える
     if (json.error) throw new Error(json.message || 'pixiv API error');
     return json.body.novel; // { data: [...], total: N, ... }
   }
@@ -166,20 +156,23 @@
         <label>ジャンル(オリジナル限定時のみ)</label>
         <select id="pxGenre">
           <option value="">すべてのジャンル</option>
-          <option value="romance">恋愛</option>
-          <option value="isekai_fantasy">異世界ファンタジー</option>
-          <option value="contemporary_fantasy">現代ファンタジー</option>
-          <option value="mystery">ミステリー</option>
-          <option value="horror">ホラー</option>
-          <option value="sf">SF</option>
-          <option value="literature">文学</option>
-          <option value="drama">ドラマ</option>
-          <option value="historical">歴史・時代</option>
-          <option value="bl">BL</option>
-          <option value="yuri">百合</option>
-          <option value="for_men">男性向け</option>
-          <option value="for_women">女性向け</option>
-          <option value="other">その他</option>
+          <option value="1">恋愛</option>
+          <option value="2">異世界ファンタジー</option>
+          <option value="3">現代ファンタジー</option>
+          <option value="4">ミステリー</option>
+          <option value="5">ホラー</option>
+          <option value="6">SF</option>
+          <option value="7">文学</option>
+          <option value="8">ドラマ</option>
+          <option value="9">歴史・時代</option>
+          <option value="10">BL</option>
+          <option value="11">百合</option>
+          <option value="12">キッズ</option>
+          <option value="13">詩</option>
+          <option value="14">エッセイ・ノンフィクション</option>
+          <option value="15">脚本・台本</option>
+          <option value="16">評論・レビュー</option>
+          <option value="17">その他</option>
         </select>
         <label>作品の言語</label>
         <select id="pxLang">
@@ -282,7 +275,7 @@
   // ブラウザ実行時は globalThis.__pxAndTestHook が未定義なので何も起きない。
   if (typeof globalThis.__pxAndTestHook === 'function') {
     globalThis.__pxAndTestHook({
-      VERSION, PAGE_SIZE, MAX_PAGES, WAIT_MS, FULLTEXT_MODE, GENRE_PARAM_CANDIDATES,
+      VERSION, PAGE_SIZE, MAX_PAGES, WAIT_MS, FULLTEXT_MODE, PARAM_GENRE,
       buildSearchUrl, fetchFulltextPage, hasTag, matchTags, collectBatch, splitTags,
       getState: () => state,
       setState: s => { state = s; },
