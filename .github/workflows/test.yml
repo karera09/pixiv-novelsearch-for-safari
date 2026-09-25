@@ -52,7 +52,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo -E env PATH="$PATH" bash scripts/cloud-setup.sh
+      # クラウドと同じ条件: リポジトリが無いディレクトリで root として実行する(リポジトリ内で実行すると
+      # .npmrc の cache=.npm-cache が root 所有になり、後続の npm ci が EACCES で失敗する)
+      - run: cp scripts/cloud-setup.sh /tmp/cloud-setup.sh && cd /tmp && sudo -E env PATH="$PATH" bash /tmp/cloud-setup.sh
       - run: sudo chown -R "$USER" /opt/ms-playwright
       - run: npm ci
       - run: npm run e2e
