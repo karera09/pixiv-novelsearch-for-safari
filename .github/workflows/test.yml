@@ -14,3 +14,21 @@ jobs:
           node-version: 22
       - run: npm run check
       - run: npm test
+
+  # WebKit(iPhone 相当)でのタッチ/UI テスト。検索 API はモックだが pixiv のトップページ自体は読み込むので、
+  # pixiv 側が CI の IP を弾く場合はこのジョブだけ失敗する(その場合は手元の `npm run e2e` で確認する)
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node e2e/cli.js install --with-deps
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: .playwright/report

@@ -29,6 +29,24 @@ npm run check     # 構文チェックのみ
 `globalThis.__pxAndTestHook` 経由で内部関数を取り出して検証します(`test/harness.js`)。
 ブラウザ実行時はこのフックが未定義なので何も起きません。
 
+### E2E テスト(Playwright WebKit / iPhone 相当)
+
+iPhone Safari に近い WebKit エンジンで、実際の pixiv ページ上に本番スクリプトを注入してタッチ操作・入力・検索フローを検証します。
+ブラウザ本体、npm キャッシュ、ログイン状態、結果はすべてこのフォルダ内(`.playwright/`、`.npm-cache/`、`node_modules/`)に閉じ、
+フォルダ外には何も書きません。
+
+```sh
+npm install          # @playwright/test(devDependency)。キャッシュは .npm-cache/ に置かれる
+npm run e2e:install  # WebKit を .playwright/browsers/ に取得(約 175MB、初回のみ)
+npm run e2e          # モック API でのタッチ/UI テスト。ログイン不要、pixiv へ検索リクエストは飛ばない
+npm run e2e:login    # 実 pixiv 検証用: 開いた WebKit で自分でログインすると .playwright/auth/pixiv.json に保存される
+npm run e2e:live     # 実 pixiv に対する検証(上のログイン状態が無ければ自動スキップ)
+npm run e2e:report   # 直近の HTML レポートを開く
+```
+
+`.playwright/auth/pixiv.json` にはセッション Cookie が含まれます。git 管理外ですが、共有・コピーしないでください。
+Playwright の WebKit は iOS Safari そのものではないため、Userscripts 拡張の挙動や iOS 固有の UI(下部ツールバー等)は実機で確認してください。
+
 ### 調査用スクリプト
 
 `tools/probe-search-api.user.js` は内部 API のパラメータ名を実環境で確認するための別スクリプトです。
@@ -40,6 +58,7 @@ npm run check     # 構文チェックのみ
 - UI は Shadow DOM 内に閉じたまま。`document.body` 直下に要素を足さない
 - `WAIT_MS` / `MAX_PAGES` の安全弁は外さない
 
-## 未解決事項
+## 検証状況
 
-内部 API のパラメータ名(ジャンル・`s_mode` など)が未確定です。詳細は `HANDOVER.md` の「5. 未解決・要確認事項」を参照してください。
+内部 API のパラメータ(`s_mode=s_tc`、`original_only`、`work_lang`、ジャンルは `genre=<数値ID>`)は 2026-09-25 に実環境で確認済みです。
+iPhone Safari 実機での最終確認と、残りの小項目は `HANDOVER.md` の「5. 未解決・要確認事項」を参照してください。

@@ -1,6 +1,6 @@
 # 引き継ぎ資料: pixiv 小説「本文検索 × タグ AND」ユーザースクリプト
 
-作成日: 2026-09-14 / 現行バージョン: v0.8 (`pixiv-fulltext-tag-and.user.js`)
+作成日: 2026-09-14 / 最終更新: 2026-09-25 / 現行バージョン: v0.9 (`pixiv-fulltext-tag-and.user.js`)
 
 ## 1. 目的
 
@@ -21,13 +21,13 @@ App Store の「Userscripts」アプリ(Safari拡張)で `.user.js` として動
 
 方向は「本文検索を回してタグで絞る」一択。逆(タグ検索→本文照合)は作品ごとに本文取得が必要で不可。
 
-## 3. 実装済み機能 (v0.8)
+## 3. 実装済み機能 (v0.9)
 
 - 本文語 / 必須タグ / 除外タグ(スペース区切り)
 - タグあいまい検索(部分一致・大文字小文字無視)チェックボックス
 - 並び順: date_d / date / popular_d / popular_male_d / popular_female_d (人気順はプレミアム限定)
 - 検索オプション(サーバー側クエリに乗る): 年齢制限 `mode=all|safe|r18`、オリジナル限定 `original_only=1`、
-  ジャンル、作品言語 `work_lang`、追加パラメータ自由入力
+  ジャンル `genre=<数値ID 1〜17>`(v0.9 で数値IDに修正)、作品言語 `work_lang`、追加パラメータ自由入力
 - 総ページ数表示: 1ページ目の `total` ÷ 1ページあたり件数
 - 中断(AbortController でfetchを切る。pは進めない)と再開
 - ヒットは見つけ次第描画。ステータス欄と操作ボタンは結果リストの下
@@ -44,59 +44,70 @@ App Store の「Userscripts」アプリ(Safari拡張)で `.user.js` として動
 |---|---|---|
 | 入力欄に文字が表示されない | pixivのCSS(input文字色 / -webkit-text-fill-color)とReactのグローバル入力ハンドラ | Shadow DOM化 + stopPropagation + 色を明示 (v0.3) |
 | 検索しても「全?件」で止まる | `state.p > state.totalPages` を totalPages が null の時点で評価(null→0) | null チェック追加 (v0.4) |
-| ジャンル指定で「例外エラーです」 | 内部APIのジャンルパラメータ名が不明 | 候補 `genre`→`gs`→`genres`→`novel_genre` を順に試す (v0.8, 未検証) |
+| ジャンル指定で「例外エラーです」 | 内部APIのジャンルパラメータ名が不明(と誤認) | 候補 `genre`→`gs`→`genres`→`novel_genre` を順に試す (v0.8, 未検証) |
+| ジャンルを選んでもエラーにならないのに絞り込まれない | 上のフォールバックで `genres=<スラッグ>` に到達すると、サーバーが未知パラメータを無視して「絞り込みなし」で 200 を返す。実は名前は `genre` で正しく、値がスラッグではなく数値IDだった | フォールバック廃止、UI の選択肢を数値ID 1〜17 に差し替え (v0.9, 実環境で確認) |
 
-## 5. 未解決・要確認事項 (最優先)
+## 5. 未解決・要確認事項
 
-### 5-1. 内部APIのパラメータ名が未確定
-ユーザー提供のページ側URL(PC版・新検索UI):
-```
-https://www.pixiv.net/search?q=test&s_mode=text&type=novel&work_lang=ja&original_only=1&genre=contemporary_fantasy&r=1
-```
-一方スクリプトが叩いている内部API(v0.8時点):
-```
-https://www.pixiv.net/ajax/search/novels/{word}?word=...&order=date_d&mode=r18&p=1&s_mode=s_tc&lang=ja&original_only=1&genre=contemporary_fantasy
-```
-→ このURLは「例外エラーです」を返した。`genre` を付けると落ちる。
+### 5-1. 内部APIのパラメータ — 解決済み(2026-09-25 実環境で確認)
 
-確認すべきこと:
-- 新検索UI(`/search?...&type=novel`)が実際に呼ぶ内部APIのURL(DevTools Networkで `ajax` フィルタ)。
-  エンドポイント自体が `/ajax/search/novels/` から変わっている可能性がある
-- 本文検索の `s_mode` の正しい値(`s_tc` と仮定。ページ側は `s_mode=text`)
-- ジャンルのパラメータ名と、`original_only` の名前
-- `r=1` の意味
-- ジャンル値のスラッグ一覧(`contemporary_fantasy` は正しいと判明。他は推定):
-  romance / isekai_fantasy / contemporary_fantasy / mystery / horror / sf / literature / drama /
-  historical / bl / yuri / for_men / for_women / other
-- 1ページあたり件数(24と仮定。`PAGE_SIZE` と総ページ数計算に影響)
+Claude Code の内蔵ブラウザでユーザーが pixiv にログインした状態で、`/ajax/search/novels/` を直接叩き、
+さらに `pixiv-fulltext-tag-and.user.js` 本体をページに注入して UI 経由でも確認した。
 
-### 5-1a. 公開OSSの調査で判明したこと(2026-09-13, PixivBatchDownloader / PixivFE のソースより)
-実環境ではまだ未検証。`tools/probe-search-api.user.js` で確認する。
+| 項目 | 結果 |
+|---|---|
+| エンドポイント | `/ajax/search/novels/{word}` のまま有効(新検索UIになっても変わっていない) |
+| 本文検索の `s_mode` | `s_tc` で有効(ページ側の `s_mode=text` に対応) |
+| `original_only=1` | 有効。件数が絞られる(例: 1,411,362 → 207,406) |
+| `work_lang=ja` | 有効。件数が絞られる(例: 1,411,362 → 1,323,994) |
+| ジャンルのパラメータ名 | `genre` で正しい |
+| ジャンルの値形式 | **数値ID**。`genre=3` で現代ファンタジーに絞られる(207,406 → 22,542)。`genre=contemporary_fantasy` は HTTP 500「例外エラーです」 |
+| `genres=<スラッグ>` 等の未知パラメータ | エラーにならず無視される(件数が original_only 単独と一致)。← v0.8 のフォールバックが「成功扱い」になっていた原因 |
+| 1ページあたり件数 | **30件**(24ではない)。`PAGE_SIZE`(24)は表示単位なので実害なし。総ページ数は1ページ目の実件数から算出しているので正しく 30 で割られる |
+| 作品オブジェクト | `genre`(数値ID文字列)と `isOriginal`(真偽値)を含む。クライアント側絞り込みにも使える |
 
-- エンドポイントは新検索UI(`/search?q=...&type=novel`)になっても `/ajax/search/novels/{word}` のまま
-  (PixivBatchDownloader は 2026-02-10 改版後もこのURLを使用)
+ジャンルIDの対応表(PixivFE `genreMap`。`genre=3` のみ実環境で件数変化を確認、他は同表を信頼):
+1 恋愛 / 2 異世界ファンタジー / 3 現代ファンタジー / 4 ミステリー / 5 ホラー / 6 SF / 7 文学 / 8 ドラマ /
+9 歴史・時代 / 10 BL / 11 百合 / 12 キッズ / 13 詩 / 14 エッセイ・ノンフィクション / 15 脚本・台本 /
+16 評論・レビュー / 17 その他。`0` は未設定。v0.8 の「男性向け/女性向け」は誤りだったので削除した。
+
+未確認のまま残っている小項目:
+- ページ側URLの `r=1` の意味
+- `s_mode` の他の値(`s_tag_only` / `s_tag` / `s_tag_full`)は本スクリプトでは使わないので未確認
+- `tlt`/`tgt`/`wlt`/`wgt`/`rlt`/`rgt`/`scd`/`ecd`/`ai_type` は OSS 調査ベースのまま(追加パラメータ欄で試せる)
+
+### 5-1a. 公開OSSの調査で判明していたこと(2026-09-13, PixivBatchDownloader / PixivFE のソースより)
+上記 5-1 の実環境確認で、以下の推測はすべて正しかったことが確定した。記録として残す。
+
+- エンドポイントは `/ajax/search/novels/{word}` のまま
 - `s_mode`: ページ側 `text` → API `s_tc`。`tag` → `s_tag_only`、`tag_tc` → `s_tag`、未指定 → `s_tag_full`
-  → 本文検索を `s_tc` とした v0.8 の仮定は正しい
-- `original_only=1`、`work_lang`、`tlt`/`tgt`(文字数)、`wlt`/`wgt`(単語数)、`rlt`/`rgt`(読了時間)、
-  `scd`/`ecd`(投稿日)、`ai_type` はページ側と同名でそのまま API に渡る
-- **`gs` はジャンルではない**。`gs=1` = 「シリーズでまとめて表示」。`csw=1` = 作者でまとめる。
-  v0.8 のフォールバック候補 `gs` は誤り(有効な値をスラッグで渡しているので落ちるか無視される)
-- 1ページあたりは **30件**(24ではない)。`PAGE_SIZE` は表示単位なので実害はないが、総ページ数の初期推定に使うなら 30
-- 検索結果の各作品オブジェクトに **`genre`(数値ID文字列)と `isOriginal`(真偽値)** が含まれる
-  → サーバー側パラメータが分からなくても、クライアント側でジャンル絞り込みが可能(最有力の回避策)
-- ジャンルIDの対応表(PixivFE `genreMap`): 1 恋愛 / 2 異世界ファンタジー / 3 現代ファンタジー / 4 ミステリー / 5 ホラー /
-  6 SF / 7 文学 / 8 ドラマ / 9 歴史・時代 / 10 BL / 11 百合 / 12 キッズ / 13 詩 / 14 エッセイ・ノンフィクション /
-  15 脚本・台本 / 16 評論・レビュー / 17 その他。`0` は未設定。
-  → v0.8 のジャンル一覧(男性向け/女性向け)は誤り。UI の選択肢もこの表に合わせて直す
-- 仮説: `genre=contemporary_fantasy` で「例外エラーです」になるのは、パラメータ名は認識されているが
-  値の形式が違う(API は数値ID `genre=3` を期待している)ため。未知のパラメータ名なら通常は無視されて落ちない
+- `original_only=1`、`work_lang` 等はページ側と同名でそのまま API に渡る
+- **`gs` はジャンルではない**。`gs=1` = 「シリーズでまとめて表示」。`csw=1` = 作者でまとめる
+- 1ページあたりは 30件
+- 各作品オブジェクトに `genre`(数値ID文字列)と `isOriginal` が含まれる
+- `genre=contemporary_fantasy` の「例外エラーです」は値形式の不一致(API は数値IDを期待)
 
 ### 5-2. 動作未検証の項目
+実環境で確認済み(2026-09-25):
+- `work_lang` は内部APIでも有効
+- 中断→再開: 中断時に `p` は進まず、再開で同じページから続く。`seen` による重複描画なし
+  (注入テストで 37ページ走査 → 中断 → 再開 → 2ページ進んで seen が 60 増加、描画は PAGE_SIZE の 24 件で停止)
+- Shadow DOM のパネル表示、ボタンの活性切替(検索/中断/もっと読む↔再開)、逐次描画、`WAIT_MS` の待機
+
+未検証のまま:
 - 人気順(プレミアム)の挙動(未加入時にエラーか丸められるか)
-- `work_lang` が内部APIでも有効か
-- 中断→再開でページを二重取得/取りこぼししないか(seen Set で重複排除はしている)
+- iPhone Safari + Userscripts 実機での表示・タッチ操作(Claude Code の環境では PC Chrome 相当の内蔵ブラウザしか使えない)
 - 最終ページ取得後にも `WAIT_MS` の待機が1回余分に入る(終端判定がループ先頭にあるため)。実害は800msの待ちだけ。
   直すなら `state.p++` の直後に `totalPages` 超過判定を入れる(test/collect.test.js の待機回数テストも更新すること)
+
+### 5-3. Claude Code 環境での実環境検証手順(再現用)
+※ 2026-09-25 以降は `npm run e2e:login` → `npm run e2e:live`(6章 (b))の方が再現性が高い。以下は内蔵ブラウザで手早く確認する場合の手順。
+1. Claude Code の内蔵ブラウザで pixiv を開き、**ユーザー自身が**ログインする(Cookie は HttpOnly で、Claude 側で保存・再利用はできない)
+2. Claude が `javascript_tool` でスクリプト本体を `(0,eval)(src)` で注入する。事前に
+   `globalThis.__pxAndTestHook = h => { globalThis.__px = h }` を定義しておくと内部関数と Shadow DOM の `$` が取れる
+3. pixiv ページから `http://127.0.0.1` への fetch は CSP で弾かれるので、ソースはツール引数に直接埋め込む
+4. ログイン判定は `/ajax/user/extra`(`meta[name=global-data]` は新UIに無い)
+5. `WAIT_MS` / `MAX_PAGES` はそのまま、走査は数十ページで「中断」して止める
 
 ## 6. 試験計画(Claude Code側でお願いしたいこと)
 
@@ -115,16 +126,30 @@ https://www.pixiv.net/ajax/search/novels/{word}?word=...&order=date_d&mode=r18&p
   - PAGE_SIZE 到達で止まる / 終端(空ページ・totalPages 超過)で done
   - 中断(AbortError)で p が進まない、再開で同じページから
   - seen による重複排除
-  - ジャンルパラメータの候補フォールバック
+  - ジャンルは `genre=<数値ID>` で1回だけ叩き、エラー時はフォールバックせず即例外。UI の選択肢が数値ID 1〜17 であること(ソース検査)
 - 上記のため、純粋関数部分をモジュールに切り出す(またはテスト時に IIFE を評価してグローバル公開)リファクタを検討
 
-### (b) 実環境確認
-- `tools/probe-search-api.user.js` を有効にして「自動プローブ実行」→ 出力をコピーして共有する。
-  ジャンルのパラメータ名×値形式の総当たり、`s_mode`/`gs`/`r` の効果、1ページ件数、作品オブジェクトの `genre` 有無を一度に確認できる。
-  「記録URL表示」で pixiv 本体がジャンル指定時に実際に叩いた API の URL も見られる
+### (b) E2E テスト(Playwright WebKit / iPhone 15 相当) — 整備済み(`npm run e2e`)
+Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エンジンでタッチ操作まで検証できるようにした(2026-09-25)。
+- 構成: `playwright.config.js`、`e2e/paths.js`(全出力を `.playwright/` に閉じる)、`e2e/cli.js`(npm scripts の入口)、
+  `e2e/fixtures.js`(本番スクリプトを無改変で `addInitScript` 注入、検索 API のモック、Shadow DOM 用ヘルパー)、
+  `e2e/ui.spec.js`(モック API。ログイン不要)、`e2e/live.spec.js`(`@live`。実 pixiv、ログイン状態が無ければスキップ)、
+  `e2e/login.js`(ユーザーが WebKit ウィンドウでログインすると `storageState` を保存)
+- `ui.spec.js` でカバー済み: ボタンがビューポート内 / タップでパネル開閉 / 入力保持と文字色(pixiv の CSS・React 干渉) /
+  タグ AND・NOT フィルタと PAGE_SIZE までのページ掘り / ジャンル選択肢が数値ID・リクエストに `genre=<ID>`・フォールバック無し /
+  スラッグ指定時のエラー表示(1リクエストで停止) / 中断→再開(p が進まない・重複なし・再開は新バッチ24件) /
+  パネル内イベントが document へバブリングしない
+- `live.spec.js` でカバー済み: ログイン有効 / `s_tc` で 30件・`genre`・`isOriginal` あり / `genre=3` で絞られ全件 genre "3" /
+  スラッグは「例外エラーです」 / UI から検索して数ページで中断
+- テスト側では `setSleep` で `WAIT_MS` の待ちだけ短縮している。本体の定数は無改変
+- 限界: Userscripts 拡張そのもの、iOS 固有 UI(下部ツールバーとボタン位置の重なり、アドレスバー縮小時のビューポート)、
+  iOS 版 WebKit との細かな差は検証できない。最終確認は実機
+
+### (c) 実環境確認(手動)
+- 5-1 は解決済み。再確認が必要になったら 5-3 の手順(内蔵ブラウザ注入)か、`tools/probe-search-api.user.js` を使う。
+  probe スクリプトは「ジャンルのパラメータ名×値形式の総当たり」等を一度に確認できる(結果は「コピー」で取り出す)
 - PC Chrome/Firefox + Tampermonkey/Violentmonkey で同じ `.user.js` を読み込んで動作確認
   (`@match https://www.pixiv.net/*` はPC版にも当たる。ただしUIはモバイル向けの全画面パネル)
-- Network タブで実URLを取得し、5-1 を解消する
 - iPhone Safari(Userscripts)での最終確認: 入力、スクロール、新規タブ、中断ボタンの反応
 
 ## 7. 配布・導入手順(iPhone)
@@ -144,7 +169,7 @@ https://www.pixiv.net/ajax/search/novels/{word}?word=...&order=date_d&mode=r18&p
 ## 9. コード構成(単一ファイル)
 
 ```
-設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, WAIT_MS, FULLTEXT_MODE, PARAM_*)
+設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, WAIT_MS, FULLTEXT_MODE, PARAM_ORIGINAL, PARAM_GENRE)
 buildSearchUrl / fetchJson / fetchFulltextPage   … API呼び出し
 hasTag / matchTags                                … タグ判定
 state / collectBatch                              … 走査ループ(カーソル・中断・重複排除)
