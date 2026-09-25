@@ -24,14 +24,14 @@ test('buildSearchUrl: 基本形(語はパスとwordの両方に入る)', () => {
 });
 
 test('buildSearchUrl: work_lang / original_only / genre', () => {
-  const q = params(buildSearchUrl(makeState({ workLang: 'en', original: true, genre: 'sf' }), 1));
+  const q = params(buildSearchUrl(makeState({ workLang: 'en', original: true, genre: '3' }), 1));
   assert.equal(q.get('work_lang'), 'en');
   assert.equal(q.get('original_only'), '1');
-  assert.equal(q.get('genre'), 'sf');
+  assert.equal(q.get('genre'), '3');
 });
 
 test('buildSearchUrl: original 未指定ならジャンルは付かない', () => {
-  const q = params(buildSearchUrl(makeState({ original: false, genre: 'sf' }), 1));
+  const q = params(buildSearchUrl(makeState({ original: false, genre: '3' }), 1));
   assert.equal(q.has('original_only'), false);
   assert.equal(q.has('genre'), false);
 });

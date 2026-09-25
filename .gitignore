@@ -1,3 +1,7 @@
 node_modules/
 .DS_Store
 *.log
+
+# Playwright(E2E)関連はすべてプロジェクト内に閉じる。ブラウザ本体・ログイン状態・結果は追跡しない
+.npm-cache/
+.playwright/

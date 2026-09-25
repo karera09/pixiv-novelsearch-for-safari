@@ -1,15 +1,23 @@
 {
   "name": "pixiv-novelsearch-for-safari",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "pixiv小説の本文全文検索とタグAND/NOT条件を組み合わせるユーザースクリプト(iPhone Safari + Userscripts 向け)",
   "main": "pixiv-fulltext-tag-and.user.js",
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
-    "check": "node --check pixiv-fulltext-tag-and.user.js"
+    "check": "node --check pixiv-fulltext-tag-and.user.js",
+    "e2e:install": "node e2e/cli.js install",
+    "e2e:login": "node e2e/cli.js login",
+    "e2e": "node e2e/cli.js test",
+    "e2e:live": "node e2e/cli.js live",
+    "e2e:report": "node e2e/cli.js report"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
 }
