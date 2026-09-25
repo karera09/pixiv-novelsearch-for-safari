@@ -4,3 +4,5 @@
 *.png binary
 *.jpg binary
 *.zip binary
+# シェルスクリプトは作業コピーでも常に LF(CRLF だと Linux の bash で壊れる)
+*.sh text eol=lf
