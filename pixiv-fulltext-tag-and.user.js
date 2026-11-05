@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         pixiv 小説 本文検索×タグAND
 // @namespace    local
-// @version      1.0
+// @version      1.1
 // @description  本文全文検索の結果を、タグ条件(AND / NOT)でクライアント側フィルタして表示する
 // @match        https://www.pixiv.net/*
 // @run-at       document-idle
@@ -11,11 +11,20 @@
   'use strict';
 
   // ---- 設定 ----
-  const VERSION = '1.0';
+  const VERSION = '1.1';
   const PAGE_SIZE = 24;         // 「検索」「続きを探す」1回で揃えたい件数(表示単位。API は1ページ30件返す)
   const MAX_PAGES = 100;        // 1回の検索で本文検索を何ページまで掘るか(安全弁)
   const PAGES_PER_BATCH = 20;   // 1回のタップで掘るページ数の上限(追加の安全弁。ヒットが少ない条件で何分も走り続けない)
-  const WAIT_MS   = 800;        // ページ取得間の待ち時間(連打防止)
+  const WAIT_MS   = 800;        // ページ取得間の待ち時間(連打防止)。設定の検索速度「標準」の値
+  const MIN_WAIT_MS = 400;      // 待ち時間の下限(安全弁)。設定をどう変えてもこれより短くはしない
+  // 検索速度(設定で選ぶ)。ページ取得間の待ち時間だけを変える。MAX_PAGES / PAGES_PER_BATCH は変えない
+  const SPEEDS = {
+    slow:   { label: 'ゆっくり', ms: 2000 },
+    normal: { label: '標準', ms: WAIT_MS },
+    fast:   { label: '速め', ms: MIN_WAIT_MS },
+  };
+  // 設定値 → 待ち時間(ms)。不明な値は「標準」、どの値でも MIN_WAIT_MS 未満にはしない
+  const waitMs = speed => Math.max(MIN_WAIT_MS, (SPEEDS[speed] || SPEEDS.normal).ms);
   const FULLTEXT_MODE = 's_tc'; // 本文検索のs_mode(2026-09-25 実環境で確認済み)
 
   let sleep = ms => new Promise(r => setTimeout(r, ms)); // テストでは差し替え可能(下の __pxAndTestHook 参照)
@@ -113,7 +122,7 @@
       if (state.totalPages != null && state.p > state.totalPages) state.done = true;
       else if (state.p > MAX_PAGES) { state.done = true; state.capped = true; }
       log();
-      if (got < PAGE_SIZE && !state.done && !state.stop && pages < PAGES_PER_BATCH) await sleep(WAIT_MS);
+      if (got < PAGE_SIZE && !state.done && !state.stop && pages < PAGES_PER_BATCH) await sleep(waitMs(prefs.speed)); // 検索中に設定を変えても次の待機から効く
     }
   }
 
@@ -145,7 +154,7 @@
     set(k, v) { try { localStorage.setItem('pxAnd:v1:' + k, JSON.stringify(v)); } catch { /* 容量超過・プライベート等 */ } },
     del(k) { try { localStorage.removeItem('pxAnd:v1:' + k); } catch { } },
   };
-  const prefs = Object.assign({ show: 'novel', saveHistory: true }, LS.get('prefs', {}));
+  const prefs = Object.assign({ show: 'novel', saveHistory: true, speed: 'normal' }, LS.get('prefs', {}));
 
   // ---- UI ----
   // Shadow DOM に閉じ込めて、pixiv側のCSS(input の文字色など)とキーボードイベント処理の影響を受けないようにする。
@@ -361,6 +370,7 @@
           <div class="inner">
             <div class="rows">
               <div class="row"><span>入口のタブを出す場所</span><div class="sel"><select id="pxShow"><option value="novel">小説のページだけ</option><option value="always">pixiv の全ページ</option><option value="manual">出さない</option></select></div></div>
+              <div class="row"><span>検索速度<small>速いほどアクセス制限(HTTP 429)にかかりやすい</small></span><div class="sel"><select id="pxSpeed">${Object.entries(SPEEDS).map(([k, v]) => `<option value="${k}">${v.label}(${v.ms / 1000}秒間隔)</option>`).join('')}</select></div></div>
               <label class="row"><span>検索条件と履歴をこの端末に保存<small>pixiv と同じ保存領域(localStorage)を使います</small></span><input type="checkbox" class="sw" id="pxSaveHist"></label>
             </div>
             <div class="hint">検索中や結果が残っている間は、どのページでもタブ(件数バッジ付き)が出ます。「出さない」にしたときは、URL の末尾に <code class="k">#pxand</code> を付けて開くか、ブックマークレット <code class="k">javascript:void dispatchEvent(new Event('pxand:open'))</code> で呼び出せます。</div>
@@ -545,7 +555,7 @@
         : s.total ? `<div class="big">条件に合う作品はありませんでした</div>本文検索 ${num(s.total)}件を確認しました。タグを減らすか「部分一致」を試してください`
           : `<div class="big">本文に「${escapeHtml(s.text)}」を含む作品が見つかりませんでした</div>語を短くするか、詳細条件を外してください`,
       limit: `<div class="big">${MAX_PAGES}ページで打ち切りました</div>アクセス過多を防ぐための上限です。本文の語や詳細条件で絞り込むか、並び順を「古い順」にして反対側から探してください`,
-      error: `<div class="big err">エラー: ${escapeHtml(lastError)}</div>「再試行」で同じページから取り直します`,
+      error: `<div class="big err">エラー: ${escapeHtml(lastError)}</div>「再試行」で同じページから取り直します${/429/.test(lastError) && prefs.speed !== 'slow' ? '。続けて起きるときは、条件画面の「設定」で検索速度を「ゆっくり」にしてください' : ''}`,
     };
     $('pxEnd').innerHTML = (END[ph] || '') + `<details id="pxDebug"><summary>リクエスト URL(確認用)</summary><code>${url}</code><button type="button" class="linkbtn" id="pxCopyUrl">URL をコピー</button></details>`;
     $('pxMore').textContent = ph === 'error' ? '再試行' : ph === 'budget' ? '続けて探す' : '続きを探す';
@@ -663,8 +673,11 @@
 
   // 設定
   $('pxShow').value = prefs.show;
+  if (!SPEEDS[prefs.speed]) prefs.speed = 'normal';
+  $('pxSpeed').value = prefs.speed;
   $('pxSaveHist').checked = prefs.saveHistory;
   $('pxShow').onchange = () => { prefs.show = $('pxShow').value; LS.set('prefs', prefs); updateEntry(); };
+  $('pxSpeed').onchange = () => { prefs.speed = SPEEDS[$('pxSpeed').value] ? $('pxSpeed').value : 'normal'; LS.set('prefs', prefs); };
   $('pxSaveHist').onchange = () => { prefs.saveHistory = !!$('pxSaveHist').checked; LS.set('prefs', prefs); if (!prefs.saveHistory) { LS.del('history'); LS.del('last'); } renderHistory(); };
 
   // 起動時: 前回の条件を復元
@@ -697,7 +710,7 @@
   // ブラウザ実行時は globalThis.__pxAndTestHook が未定義なので何も起きない。
   if (typeof globalThis.__pxAndTestHook === 'function') {
     globalThis.__pxAndTestHook({
-      VERSION, PAGE_SIZE, MAX_PAGES, PAGES_PER_BATCH, WAIT_MS, FULLTEXT_MODE, PARAM_GENRE, GENRES,
+      VERSION, PAGE_SIZE, MAX_PAGES, PAGES_PER_BATCH, WAIT_MS, MIN_WAIT_MS, SPEEDS, waitMs, prefs, FULLTEXT_MODE, PARAM_GENRE, GENRES,
       buildSearchUrl, fetchFulltextPage, hasTag, matchTags, collectBatch, splitTags, isNovelContext, pageContext,
       getState: () => state,
       setState: s => { state = s; },

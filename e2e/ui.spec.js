@@ -311,3 +311,27 @@ test('パネル内のタッチ/キー操作が pixiv 側(document)へ伝播し�
   const bubbled = await page.evaluate(() => window.__bubbled);
   expect(bubbled).toEqual([]);
 });
+
+test('設定で検索速度を変えると、ページ間の待ち時間が変わり、再読み込み後も残る', async ({ page, px }) => {
+  // 待ち時間そのものは短縮したまま、本体が要求した ms だけ記録する
+  await page.evaluate(() => { window.__waits = []; window.__px.setSleep(ms => { window.__waits.push(ms); return new Promise(r => setTimeout(r, 10)); }); });
+  await px.$('pxAndBtn').tap();
+  await px.$('pxPrefs').locator('summary').tap();
+  await expect(px.$('pxSpeed')).toHaveValue('normal');
+  const opts = await px.$('pxSpeed').locator('option').allTextContents();
+  expect(opts.length).toBe(3);
+  await px.$('pxSpeed').selectOption('slow');
+
+  await px.$('pxText').fill('魔法');
+  await px.$('pxMust').fill('存在しないタグ');
+  await px.$('pxRun').tap();
+  await px.waitIdle();
+  const { waits, slow, min } = await page.evaluate(() => ({ waits: window.__waits, slow: window.__px.waitMs('slow'), min: window.__px.MIN_WAIT_MS }));
+  expect(waits.length).toBeGreaterThan(0);
+  expect(waits.every(ms => ms === slow)).toBe(true);
+  expect(slow).toBeGreaterThanOrEqual(min);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => !!window.__px);
+  await expect(px.$('pxSpeed')).toHaveValue('slow');
+});

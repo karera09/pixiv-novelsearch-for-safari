@@ -1,6 +1,6 @@
 # 引き継ぎ資料: pixiv 小説「本文検索 × タグ AND」ユーザースクリプト
 
-作成日: 2026-09-14 / 最終更新: 2026-09-25 / 現行バージョン: v1.0 (`pixiv-fulltext-tag-and.user.js`)
+作成日: 2026-09-14 / 最終更新: 2026-11-05 / 現行バージョン: v1.1 (`pixiv-fulltext-tag-and.user.js`)
 
 ## 1. 目的
 
@@ -36,6 +36,10 @@ App Store の「Userscripts」アプリ(Safari拡張)で `.user.js` として動
 - UIは Shadow DOM 内、`documentElement` 直下にマウント。ShadowRoot でキー/入力/タッチ/クリック/submit/change を
   `stopPropagation` してpixiv側(React)へ流さない  ← pixivのCSSと入力横取り対策
 - `fetchJson` は JSON 以外の応答(ログイン切れ・403・429 の HTML)を分かる文言のエラーにする(v1.0)
+- **検索速度の設定**(v1.1): 設定の「検索速度」(`#pxSpeed`、`prefs.speed`)で、ページ取得間の待ち時間を
+  ゆっくり 2秒 / 標準 0.8秒(`WAIT_MS`) / 速め 0.4秒 から選ぶ。`SPEEDS` と `waitMs()` で定義し、どの値でも下限 `MIN_WAIT_MS`(400ms)未満にはしない。
+  変えるのは待ち時間だけで、`MAX_PAGES` / `PAGES_PER_BATCH` はそのまま。検索中に変えても次の待機から効く。
+  HTTP 429 のエラー表示では「ゆっくり」にするよう案内する
 
 ### v1.0 の UI(2026-09-25 全面書き直し)
 - **入口**: 画面右端の細いエッジタブ(`#pxAndBtn`、見た目 18×64px)。既定では小説関連ページ(`isNovelContext`:
@@ -157,11 +161,12 @@ Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エン
   `e2e/login.js`(ユーザーが WebKit ウィンドウでログインすると `storageState` を保存)
 - フィクスチャの開始 URL は `/tags/魔法/novels`(`startUrl` オプション。入口のタブは小説ページでしか出ないため)。
   オフラインのスタブはナビゲーション要求ならどのパスでも返す。走査の完了は `px.waitIdle()`(`data-state` が running 以外になるまで)で待つ
-- `ui.spec.js` でカバー済み(13本): エッジタブがビューポート内・タップで開く・空の本文語では検索不可 / トップでは出ず pushState で出る・`#pxand` で開く /
+- `ui.spec.js` でカバー済み(14本): エッジタブがビューポート内・タップで開く・空の本文語では検索不可 / トップでは出ず pushState で出る・`#pxand` で開く /
   入力保持と文字色・placeholder の色が値と違う / タグ AND・NOT フィルタと PAGE_SIZE までのページ掘り・1件目が見えたまま・一致タグの強調 /
   ジャンル選択肢が数値ID・オリジナル限定オフでは disabled・リクエストに `genre=<ID>` / スラッグ指定時のエラー表示と「再試行」 /
   中断→再開(p が進まない・重複なし・「続きを探す」) / PAGES_PER_BATCH で budget 停止→「続けて探す」 / 閉じても検索が続きバッジが出る /
-  Enter で検索・再読み込み後に条件と履歴が戻る / 結果のタグから除外に追加して再検索 / タグページからの必須タグ提案 / パネル内イベントが document へバブリングしない
+  Enter で検索・再読み込み後に条件と履歴が戻る / 結果のタグから除外に追加して再検索 / タグページからの必須タグ提案 / パネル内イベントが document へバブリングしない /
+  設定の検索速度で待ち時間が変わり再読み込み後も残る(v1.1)
 - `live.spec.js` でカバー済み: ログイン有効 / `s_tc` で 30件・`genre`・`isOriginal` あり / `genre=3` で絞られ全件 genre "3" /
   スラッグは「例外エラーです」 / UI から検索して数ページで中断
 - テスト側では `setSleep` で `WAIT_MS` の待ちだけ短縮している。本体の定数は無改変
@@ -204,7 +209,7 @@ Windows に Mac/iOS 実機が無くても、Safari と同系統の WebKit エン
 ## 9. コード構成(単一ファイル)
 
 ```
-設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, PAGES_PER_BATCH, WAIT_MS, FULLTEXT_MODE, PARAM_ORIGINAL, PARAM_GENRE, GENRES)
+設定定数 (VERSION, PAGE_SIZE, MAX_PAGES, PAGES_PER_BATCH, WAIT_MS, MIN_WAIT_MS, SPEEDS/waitMs, FULLTEXT_MODE, PARAM_ORIGINAL, PARAM_GENRE, GENRES)
 buildSearchUrl / fetchJson / fetchFulltextPage  … API呼び出し(fetchJson は非 JSON 応答を分かるエラーに)
 hasTag / matchTags                                … タグ判定
 state / collectBatch                              … 走査ループ(カーソル・中断・重複排除・budget)
